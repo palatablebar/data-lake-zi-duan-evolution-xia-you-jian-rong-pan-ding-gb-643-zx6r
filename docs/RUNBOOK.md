@@ -22,8 +22,9 @@ docker compose exec -T app python -m pytest -q
 2. `/types` 比较两个类型写法，看读者 / 写者两向结论。
 3. `/mapping` 看旧名到新名、别名 SQL、冲突项。
 4. `/impact` 看受影响节点、环、断链、单边登记。
-5. `/batches` 点「跑一次」，再点「陈旧提交」验证 409。
-6. `/spec` 导出迁移单与三份账目 CSV。
+5. `/plan` 看修复排程：谁先做、处理位置、依赖是否解除、本批哪几项可切换。依赖未解除的项按钮不出现，直接调接口返回 409 `DEP_UNRELEASED`。
+6. `/batches` 点「跑一次」，再点「陈旧提交」验证 409。
+7. `/spec` 导出迁移单与四份账目 CSV。
 
 ## 4 重建数据库
 
@@ -47,6 +48,9 @@ docker compose up -d --build
 | POST | `/api/compat` | 一对版本的两向判定 |
 | GET | `/api/mapping` | 映射表、别名、冲突 |
 | GET | `/api/impact` | 影响面、环、断链 |
+| GET | `/api/plan` | 修复排程、依赖解除、可切换状态 |
+| POST | `/api/plan/switch` | 切换一项工单（依赖未解除返回 409） |
+| POST | `/api/plan/rollback` | 回滚一项工单（中断的切换按日志恢复） |
 | POST | `/api/runs` | 跑批次，可带基线版本号与生效区间 |
 | GET | `/api/batches` | 批次历史 |
 | GET | `/api/reconcile` | 四账对账 |
@@ -54,6 +58,7 @@ docker compose up -d --build
 | GET | `/api/export/fields.csv` | 字段账 CSV |
 | GET | `/api/export/refs.csv` | 引用账 CSV |
 | GET | `/api/export/ledger.csv` | 账目 CSV |
+| GET | `/api/export/plan.csv` | 修复排程 CSV |
 | GET | `/api/export/manifest.json` | 运行清单 |
 
 ## 6 失败处置
@@ -61,6 +66,10 @@ docker compose up -d --build
 | 现象 | 原因 | 处置 |
 |---|---|---|
 | 409 `VERSION_STALE` | 提交带的基线序号落后 | 去掉 `base_version_seq` 或填当前序号 |
+| 409 `DEP_UNRELEASED` | 工单依赖未解除，或自身修不动 | 看 `detail.condition` 与 `detail.deps`，先切换依赖或先把下游迁走 |
+| 409 `SWITCH_INTERRUPTED` | 同一工单上次切换没走完 | 先 `POST /api/plan/rollback`，再重试切换 |
+| 409 `DEPENDENT_SWITCHED` | 下游已切换，不能先回滚上游 | 逆依赖顺序先回滚下游 |
+| 409 `WINDOW_FULL` | 本批窗口槽位已满 | 排到下批，或先回滚不用的项 |
 | 400 `WINDOW_INVERTED` | 生效区间起点不早于终点 | 检查 `effective_from` / `effective_to` |
 | 400 `BAD_INPUT` | 文件名、参数或 JSON 结构不对 | 看返回的 `detail` |
 | 404 `NOT_FOUND` | 还没跑过批次 | 先在 `/batches` 点「跑一次」 |

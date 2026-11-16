@@ -14,11 +14,11 @@ def build_ledger(diff: dict, consumers: list[dict], resolution: dict) -> dict:
 
 
 def spec_markdown(run: dict) -> str:
-    return spec_md.render(run)
+    return spec_md.render(run, plan_payload(run))
 
 
 def clauses(run: dict) -> list[dict]:
-    return spec_md.clauses(run)
+    return spec_md.clauses(run, plan_payload(run))
 
 
 def fields_csv_text(run: dict) -> str:
@@ -33,6 +33,17 @@ def ledger_csv_text(run: dict) -> str:
     return csv_out.ledger_csv(run.get("ledger") or {})
 
 
+def plan_payload(run: dict) -> dict:
+    """排程视图（含切换状态），供页面与导出共用。"""
+    from app.modules.m8_plan import service as plan_service
+
+    return plan_service.current_plan(run)
+
+
+def plan_csv_text(run: dict) -> str:
+    return csv_out.plan_csv(plan_payload(run))
+
+
 def manifest_json_text(run: dict) -> str:
     from datetime import datetime
 
@@ -42,6 +53,17 @@ def manifest_json_text(run: dict) -> str:
     payload["input_names"] = run.get("input_names") or {}
     payload["ledger"] = run.get("ledger") or {}
     payload["warnings"] = run.get("warnings") or []
+    plan = plan_payload(run)
+    payload["plan"] = {
+        "summary": plan.get("summary") or {},
+        "items": [
+            {key: item.get(key) for key in
+             ("item_id", "position", "table", "column", "primary", "tasks", "wave",
+              "slot", "deps_released", "effective_switchable", "switch_status",
+              "state_code", "process_state", "condition", "basis")}
+            for item in plan.get("items") or []
+        ],
+    }
     return csv_out.manifest_json(payload)
 
 

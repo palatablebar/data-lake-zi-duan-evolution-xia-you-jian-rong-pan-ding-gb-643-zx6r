@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}修复排程 · fieldmap{% endblock %}
+{% block body %}
+<section class="doc-section">
+  <h1>修复排程</h1>
+  <p class="lede">破坏 <span class="mono">{{ summary.breaking or 0 }}</span>　可切换 <span class="mono">{{ summary.pending or 0 }}</span>　依赖未解除 <span class="mono">{{ summary.blocked or 0 }}</span>　窗口容量 <span class="mono">{{ summary.capacity or 0 }}</span></p>
+  <div class="actions">
+    <a class="btn ghost" href="/api/export/plan.csv">排程 CSV</a>
+    <a class="btn ghost" href="/api/export/spec.md">迁移单 MD</a>
+    <span class="flash" data-flash></span>
+  </div>
+  <p class="lede">{{ summary.order_rule }}；{{ summary.window_rule }}。关键链路：{{ summary.critical_tables|join('、') or '—' }}。</p>
+
+  {% if empty %}
+  <p class="empty">还没有批次。</p>
+  {% else %}
+  <div class="wrap-scroll">
+    <table>
+      <caption>工单顺序与可切换条件<sup class="fn">1</sup></caption>
+      <thead>
+        <tr>
+          <th class="num">序</th>
+          <th>表.字段</th>
+          <th>原因</th>
+          <th class="num">影响任务</th>
+          <th>处理位置</th>
+          <th>依赖</th>
+          <th>波次</th>
+          <th>可切换</th>
+          <th>依据</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in items %}
+        <tr>
+          <td class="num">{{ item.position }}</td>
+          <td class="name" title="{{ item.field_id }}">{{ item.table }}.{{ item.column }}</td>
+          <td class="reason"><span class="code">{{ item.primary|reason }}</span></td>
+          <td class="num">{{ item.tasks }}</td>
+          <td>{{ item.fix.layer }}<br><span class="mono">{{ item.fix.kind }}</span></td>
+          <td class="reason">
+            {% if not item.deps %}—<br><span class="mono">无依赖</span>
+            {% elif item.deps_released %}<span class="st st-ok">已解除</span>
+            {% else %}<span class="st st-bad">未解除</span>{% endif %}
+            {% if item.deps %}<br>{{ item.deps|map(attribute='column')|join('、') }}{% endif %}
+          </td>
+          <td>
+            {% if item.wave == '本批' %}<span class="st st-ok">本批</span>
+            {% elif item.wave == '下批' %}<span class="st st-warn">下批</span>
+            {% elif item.wave == '中断' %}<span class="st st-warn">中断</span>
+            {% else %}<span class="st st-bad">阻塞</span>{% endif %}
+            {% if item.slot %}<span class="mono"> #{{ item.slot }}</span>{% endif %}
+          </td>
+          <td>
+            {% if item.effective_switchable %}<span class="st st-ok">可切换</span>
+            {% elif item.interrupted %}<span class="st st-warn">切换中断</span>
+            {% elif item.switch_status == 'switched' %}<span class="st st-info">已切换</span>
+            {% else %}<span class="st st-bad">否</span>{% endif %}
+            <br><span class="code" title="{{ item.process_state }}">{{ item.state_code|reason }}</span>
+          </td>
+          <td class="reason">{{ item.basis|join('；') }}</td>
+          <td>
+            {% if item.effective_switchable %}
+            <button type="button" data-action="plan-switch" data-item-id="{{ item.item_id }}">切换</button>
+            {% elif item.switch_status in ('switched', 'switching') %}
+            <button type="button" class="ghost" data-action="plan-rollback" data-item-id="{{ item.item_id }}">回滚</button>
+            {% else %}—{% endif %}
+          </td>
+        </tr>
+        <tr class="detail-row">
+          <td></td>
+          <td colspan="9" class="reason">可切换条件：{{ item.condition }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</section>
+
+<section class="doc-section">
+  <h2><span class="clause">2</span>切换日志</h2>
+  {% if journal %}
+  <div class="wrap-scroll">
+    <table>
+      <thead><tr><th>时间</th><th>动作</th><th>工单</th><th>从</th><th>到</th><th>备注</th></tr></thead>
+      <tbody>
+        {% for entry in journal|reverse %}
+        <tr>
+          <td class="name">{{ entry.at|ts }}</td>
+          <td>{{ entry.action }}</td>
+          <td class="name">{{ entry.item_id }}</td>
+          <td>{{ entry.from }}</td>
+          <td>{{ entry.to }}</td>
+          <td class="reason">{{ entry.note or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="empty">还没有切换记录。</p>
+  {% endif %}
+</section>
+
+<aside class="notes">
+  <ol class="footnotes">
+    <li>排序按关键链路 → 影响任务多 → 依赖先于被依赖；依赖未解除的字段不进入可切换状态。<a class="back" href="#main">↩</a></li>
+    <li>一次切换先写日志再落状态；中断后可按日志回滚到旧版，同一批重试不新增工单。<a class="back" href="#main">↩</a></li>
+  </ol>
+</aside>
+{% endblock %}

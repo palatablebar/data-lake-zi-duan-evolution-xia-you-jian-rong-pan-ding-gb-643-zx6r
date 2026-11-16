@@ -1,6 +1,6 @@
 # 深度登记 fieldmap
 
-- 规模：中型（7 个功能模块，76 个文件，65 条测试）
+- 规模：中型（8 个功能模块，88 个文件，94 条测试）
 - 核心规则：字段身份只认 `field_id`；类型兼容按 Decimal 值域 / 刻度 / 精确整数三件套判定；影响面 = 引用身份解析后的反向闭包
 - 使用者与工作流：湖仓数据管理员拿到上游新版元数据后，判定 60 个下游视图/任务是否还能跑，并出一份带条款号的迁移单
 
@@ -15,6 +15,7 @@
 | M5 影响面 | 看受影响的下游节点、环、断链、单边登记 | GET /api/impact | `app/modules/m5_impact/handler.py` `app/modules/m5_impact/service.py` `app/modules/m5_impact/closure.py` `app/modules/m5_impact/cycle.py` `app/modules/m5_impact/broken.py` | `tests/test_m5_impact.py` |
 | M6 版本批次 | 跑批次、看历史、验陈旧拒绝与区间重叠 | POST /api/runs | `app/modules/m6_batches/handler.py` `app/modules/m6_batches/service.py` `app/modules/m6_batches/window.py` `app/modules/m6_batches/guard.py` `app/modules/m6_batches/history.py` | `tests/test_m6_batches.py` |
 | M7 迁移单 | 出带条款号的迁移单与三份账目 CSV | GET /api/export/spec.md | `app/modules/m7_migration/handler.py` `app/modules/m7_migration/service.py` `app/modules/m7_migration/spec_md.py` `app/modules/m7_migration/csv_out.py` `app/modules/m7_migration/ledger.py` | `tests/test_m7_migration.py` |
+| M8 修复排程 | 排工单、看依赖解除、按窗口切换与回滚 | GET /api/plan | `app/modules/m8_plan/handler.py` `app/modules/m8_plan/service.py` `app/modules/m8_plan/model.py` `app/modules/m8_plan/lifecycle.py` | `tests/test_m8_plan.py` |
 
 ## 陷阱登记
 
@@ -30,6 +31,7 @@
 | TRAP-22 | 同一字段被连续改过两次名 | 只认最近一跳，最早的名字解析不到 | 跨版本改名链一路解析到底 | `app/modules/m4_mapping/rename.py` | `tests/test_m4_mapping.py::test_trap22_alias_chain_resolves_multi_hop` |
 | TRAP-25 | 两个版本生效区间重叠 | 取到哪版看运气 | 半开区间比较，重叠直接标记警告 | `app/modules/m6_batches/window.py` | `tests/test_m6_batches.py::test_trap25_overlap_flagged_but_adjacent_clean` |
 | TRAP-26 | 基于旧版本号提交 | 后提交无条件覆盖新结果 | 版本号乐观锁，基线落后即 409 | `app/modules/m6_batches/guard.py` | `tests/test_m6_batches.py::test_trap26_stale_submission_rejected` |
+| TRAP-27 | 依赖未解除就切换、切换中断留下半截状态、重试同一批多出工单 | 先切下游导致两个入口结论相反；进程被杀后状态不可恢复；重试把工单翻倍 | 闸门三条件（自身可修 / 依赖已切换 / 窗口有槽）统一在一处判定；先写日志再落状态，中断按日志回滚；工单按 (批次键, item_id) 唯一，只补缺不挪位 | `app/modules/m8_plan/lifecycle.py` | `tests/test_m8_plan.py::test_dependency_blocks_switchable_state` `tests/test_m8_plan.py::test_interrupted_switch_recovers_old_version` `tests/test_m8_plan.py::test_retry_same_batch_does_not_add_orders` |
 
 ## 对账规则
 
@@ -45,4 +47,6 @@
 - DDL 只解析 `CREATE TABLE` 的列定义，不处理分区、约束、索引与 `ALTER`。
 - 类型格只覆盖数值、字符、时间、布尔四族；映射表、数组、结构体一律算 `unknown`，保守判破坏。
 - 生效区间重叠只标记不阻断，最终以版本序号为准。
+- 修复排程的排序权重只看关键表清单（`config.CRITICAL_TABLES` / `CRITICAL_CONSUMERS`）与单项影响任务数；没有跨批次的工期、人力与停机成本模型。
+- 切换只推进状态机与日志，不真的执行 DDL 或改下游 SQL；执行仍由运维按迁移单落地。
 - 打印页脚用 `counter(page)`，Chrome 打印预览不渲染该计数。

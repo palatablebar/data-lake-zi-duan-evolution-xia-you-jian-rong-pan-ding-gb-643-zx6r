@@ -9,15 +9,18 @@ FOOTNOTES = [
     "类型放宽指新类型能无损容纳旧类型的全部取值。",
     f"生效区间按 {config.WINDOW_SEMANTICS} 处理。",
     "账目差额应为 0；不为 0 说明判定漏项。",
+    "排程按关键链路 → 影响任务 → 依赖顺序生成；依赖未解除的项不进入可切换状态。",
 ]
 
 
-def clauses(run: dict) -> list[dict]:
-    """按优先级列出破坏项，每条一个条款号。"""
+def clauses(run: dict, plan: dict | None = None) -> list[dict]:
+    """按优先级列出破坏项，每条一个条款号；排程信息与 /plan 页同源。"""
     rows = [row for row in (run.get("diff") or []) if row["verdict"] == "BREAKING"]
     rows.sort(key=lambda row: (row["table"], row["old_name"] or row["new_name"] or ""))
+    by_id = {item["field_id"]: item for item in (plan or {}).get("items") or []}
     out: list[dict] = []
     for index, row in enumerate(rows, start=1):
+        fixed = by_id.get(row["field_id"]) or {}
         out.append({
             "no": f"3.{index}",
             "field_id": row["field_id"],
@@ -34,6 +37,7 @@ def clauses(run: dict) -> list[dict]:
             "writer_ok": row["writer_ok"],
             "ref_count": row["ref_count"],
             "reasons": row["reasons"],
+            "plan": fixed,
         })
     return out
 
@@ -46,12 +50,12 @@ def _md_table(header: list[str], rows: list[list[str]]) -> str:
     return "\n".join(lines)
 
 
-def render(run: dict) -> str:
+def render(run: dict, plan: dict | None = None) -> str:
     ledger = run.get("ledger") or {}
     fields = ledger.get("fields") or {}
     refs = ledger.get("refs") or {}
     buckets = fields.get("buckets") or {}
-    digests = run.get("digests") or {}
+    plan = plan or {}
     parts = [
         f"# 迁移单 {run['run_id']}",
         "",
@@ -84,17 +88,18 @@ def render(run: dict) -> str:
              ["新侧差额", fields.get("new_gap", 0)]],
         ),
         "",
-        f"字段身份按 field_id 对齐[^1]，类型放宽按值域与刻度判定[^2]，账目差额应为 0[^4]。",
+        "字段身份按 field_id 对齐[^1]，类型放宽按值域与刻度判定[^2]，账目差额应为 0[^4]。",
         "",
         "## 3 破坏项",
         "",
     ]
 
-    items = clauses(run)
+    items = clauses(run, plan)
     if not items:
         parts.append("无破坏项。")
         parts.append("")
     for item in items:
+        fixed = item.get("plan") or {}
         parts.append(f"### {item['no']} {item['table']}.{item['old_name'] or '—'}"
                      f" → {item['new_name'] or '—'}")
         parts.append("")
@@ -104,6 +109,14 @@ def render(run: dict) -> str:
         parts.append(f"- 读者：{'通过' if item['reader_ok'] else '不通过'}"
                      f"；写者：{'通过' if item['writer_ok'] else '不通过'}")
         parts.append(f"- 下游引用：{item['ref_count']} 处")
+        if fixed:
+            parts.append(f"- 处理位置：{(fixed.get('fix') or {}).get('layer')}"
+                         f"（{fixed.get('position')} / {fixed.get('wave')}）")
+            parts.append(f"- 依赖解除：{'是' if fixed.get('deps_released') else '否'}"
+                         f"；可切换：{'是' if fixed.get('effective_switchable') else '否'}"
+                         f"；切换状态：{fixed.get('process_state')}")
+            parts.append(f"- 可切换条件：{fixed.get('condition')}")
+            parts.append(f"- 依据：{'；'.join(fixed.get('basis') or [])}")
         parts.append("")
 
     parts.extend([
@@ -137,8 +150,25 @@ def render(run: dict) -> str:
         "## 6 回滚",
         "",
         "1. 按第 4 节建兼容视图，旧名字继续可用。",
-        "2. 破坏项逐个补默认值或改类型，再重跑判定。",
-        "3. 版本切回上一版，生效区间端点保持半开。",
+        "2. 破坏项按第 7 节排程逐项补默认值或放宽类型，再重跑判定。",
+        "3. 版本切回上一版，生效区间端点保持半开；已切换项在修复排程页可直接回滚。",
+        "",
+        "## 7 修复排程",
+        "",
+        _md_table(
+            ["序", "表.字段", "原因", "影响任务", "处理位置", "依赖解除", "波次", "可切换", "状态码", "切换状态"],
+            [
+                [item["position"], f"{item['table']}.{item['column']}", item["primary"],
+                 item["tasks"], (item.get("fix") or {}).get("layer"),
+                 "是" if item.get("deps_released") else "否",
+                 item["wave"], "是" if item.get("effective_switchable") else "否",
+                 item.get("state_code"), item.get("process_state")]
+                for item in plan.get("items") or []
+            ],
+        ),
+        "",
+        f"排序与闸门：{(plan.get('summary') or {}).get('order_rule', '—')}；"
+        f"窗口 {(plan.get('summary') or {}).get('window_rule', '—')}[^5]",
         "",
     ])
     for index, note in enumerate(FOOTNOTES, start=1):

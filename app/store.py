@@ -56,6 +56,13 @@ CREATE TABLE IF NOT EXISTS kv (
     k TEXT PRIMARY KEY,
     v TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS plan_orders (
+    batch_key     TEXT NOT NULL,
+    item_id       TEXT NOT NULL,
+    position      INTEGER NOT NULL,
+    payload_json  TEXT NOT NULL,
+    PRIMARY KEY (batch_key, item_id)
+);
 CREATE INDEX IF NOT EXISTS idx_quarantine_schema ON quarantine(schema_id);
 """
 
@@ -83,7 +90,7 @@ def reset() -> None:
     """测试与重建用：清空全部业务表。"""
     with _LOCK, _connect() as conn:
         conn.executescript(SCHEMA)
-        for table in ("snapshots", "runs", "quarantine", "kv"):
+        for table in ("snapshots", "runs", "quarantine", "kv", "plan_orders"):
             conn.execute(f"DELETE FROM {table}")
 
 
@@ -272,3 +279,37 @@ def get_kv(key: str, default=None):
     with _LOCK, _connect() as conn:
         row = conn.execute("SELECT v FROM kv WHERE k=?", (key,)).fetchone()
     return _loads(row["v"]) if row else default
+
+
+# ---------- 修复工单 ----------
+# 工单按 (批次键, item_id) 唯一。同一批次重试只做 INSERT OR IGNORE，
+# 不新增行，也不搬动已有位置。
+
+def save_plan_orders(batch_key: str, orders: list[dict]) -> None:
+    with _LOCK, _connect() as conn:
+        conn.executemany(
+            """INSERT OR IGNORE INTO plan_orders (batch_key, item_id, position, payload_json)
+               VALUES (?,?,?,?)""",
+            [
+                (batch_key, item["item_id"], int(item["position"]), _dumps(item))
+                for item in orders
+            ],
+        )
+
+
+def list_plan_orders(batch_key: str) -> list[dict]:
+    with _LOCK, _connect() as conn:
+        rows = conn.execute(
+            """SELECT payload_json FROM plan_orders WHERE batch_key=?
+               ORDER BY position, item_id""",
+            (batch_key,),
+        ).fetchall()
+    return [_loads(row["payload_json"]) for row in rows]
+
+
+def count_plan_orders(batch_key: str) -> int:
+    with _LOCK, _connect() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) AS n FROM plan_orders WHERE batch_key=?", (batch_key,)
+        ).fetchone()
+    return int(row["n"])

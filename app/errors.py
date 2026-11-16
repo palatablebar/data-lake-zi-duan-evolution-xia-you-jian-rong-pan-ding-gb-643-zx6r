@@ -48,6 +48,18 @@ class Conflict(FieldmapError):
     label = "记录冲突"
 
 
+class DependencyUnreleased(FieldmapError):
+    status = 409
+    code = "DEP_UNRELEASED"
+    label = "依赖未解除"
+
+
+class SwitchInterrupted(FieldmapError):
+    status = 409
+    code = "SWITCH_INTERRUPTED"
+    label = "上次切换未完成"
+
+
 def install(app: FastAPI) -> None:
     @app.exception_handler(FieldmapError)
     async def _handle_domain(_: Request, exc: FieldmapError) -> JSONResponse:

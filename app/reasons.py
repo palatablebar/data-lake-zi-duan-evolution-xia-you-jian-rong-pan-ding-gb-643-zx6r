@@ -53,6 +53,17 @@ CODES: dict[str, tuple[str, str]] = {
     "COMPATIBLE": ("兼容", "info"),
     "COMPATIBLE_BY_MAPPING": ("加别名后兼容", "warn"),
     "BREAKING": ("破坏", "break"),
+    # 修复排程与切换
+    "PLAN_READY": ("可切换", "info"),
+    "PLAN_WAITING": ("等待依赖切换", "warn"),
+    "PLAN_BLOCKED": ("依赖未解除", "warn"),
+    "PLAN_SWITCHED": ("已切换", "info"),
+    "PLAN_ROLLED_BACK": ("已回滚", "warn"),
+    "DEP_UNRELEASED": ("依赖未解除，拒绝切换", "break"),
+    "SWITCH_INTERRUPTED": ("上次切换未完成", "warn"),
+    "WINDOW_FULL": ("窗口已满", "warn"),
+    "NOTHING_TO_ROLLBACK": ("没有可回滚的切换", "warn"),
+    "DEPENDENT_SWITCHED": ("有依赖项已切换，先回滚依赖项", "warn"),
 }
 
 # 类型收窄细分，挂在明细里，不进码表

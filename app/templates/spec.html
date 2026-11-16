@@ -9,6 +9,7 @@
     <a class="btn ghost" href="/api/export/fields.csv">字段账 CSV</a>
     <a class="btn ghost" href="/api/export/refs.csv">引用账 CSV</a>
     <a class="btn ghost" href="/api/export/ledger.csv">账目 CSV</a>
+    <a class="btn ghost" href="/api/export/plan.csv">排程 CSV</a>
     <a class="btn ghost" href="/api/export/manifest.json">运行清单</a>
   </div>
 
@@ -21,6 +22,11 @@
     <p class="meta">原因 <span class="mono">{{ item.primary }}</span>（{{ item.primary_label }}）</p>
     <p class="meta">类型 <span class="mono">{{ item.old_type or '—' }} → {{ item.new_type or '—' }}</span>　变化 {{ item.change }}</p>
     <p class="meta">读者 {% if item.reader_ok %}通过{% else %}不通过{% endif %}　写者 {% if item.writer_ok %}通过{% else %}不通过{% endif %}　引用 {{ item.ref_count }} 处</p>
+    {% if item.plan %}
+    <p class="meta">处理位置 <span class="mono">{{ item.plan.fix.layer }}</span>（第 {{ item.plan.position }} 项 / {{ item.plan.wave }}）　依赖解除 {% if item.plan.deps_released %}是{% else %}否{% endif %}　可切换 {% if item.plan.effective_switchable %}是{% else %}否{% endif %}（{{ item.plan.state_code|reason }}）</p>
+    <p class="meta">可切换条件 {{ item.plan.condition }}</p>
+    <p class="meta">依据 {{ item.plan.basis|join('；') }}</p>
+    {% endif %}
   </article>
   {% endfor %}
   {% else %}

@@ -17,6 +17,13 @@ FIELD_HEADER = [
 
 REF_HEADER = ["consumer", "kind", "ref", "table", "column", "via", "field_id", "reason"]
 
+PLAN_HEADER = [
+    "position", "field_id", "table", "column", "primary", "change", "tier",
+    "tasks", "ref_count", "layer", "action", "suggestion", "deps_released",
+    "deps", "wave", "slot", "switchable", "switch_status", "state_code",
+    "condition", "basis",
+]
+
 
 def _buffer() -> tuple[io.StringIO, "csv.writer"]:
     buffer = io.StringIO()
@@ -59,6 +66,37 @@ def refs_csv(run: dict) -> str:
     for item in resolution.get("broken") or []:
         writer.writerow([item["consumer"], item["kind"], item["ref"], item["table"],
                          item["column"], item.get("via") or "broken", "", "REF_BROKEN"])
+    return buffer.getvalue()
+
+
+def plan_csv(plan: dict) -> str:
+    """修复排程导出：页面、迁移单与这份 CSV 读同一份 plan。"""
+    buffer, writer = _buffer()
+    writer.writerow(PLAN_HEADER)
+    for item in plan.get("items") or []:
+        writer.writerow([
+            str(item.get("position", "")),
+            str(item.get("field_id", "")),
+            item.get("table") or "",
+            item.get("column") or "",
+            item.get("primary") or "",
+            item.get("change") or "",
+            "关键" if item.get("tier") == 0 else "普通",
+            str(item.get("tasks", 0)),
+            str(item.get("ref_count", 0)),
+            (item.get("fix") or {}).get("layer") or "",
+            (item.get("fix") or {}).get("kind") or "",
+            (item.get("fix") or {}).get("suggestion") or "",
+            "Y" if item.get("deps_released") else "N",
+            "；".join(dep.get("column", "") for dep in item.get("deps") or []),
+            item.get("wave") or "",
+            str(item.get("slot") or ""),
+            "Y" if item.get("effective_switchable") else "N",
+            item.get("switch_status") or "available",
+            item.get("state_code") or "",
+            item.get("condition") or "",
+            "；".join(item.get("basis") or []),
+        ])
     return buffer.getvalue()
 
 

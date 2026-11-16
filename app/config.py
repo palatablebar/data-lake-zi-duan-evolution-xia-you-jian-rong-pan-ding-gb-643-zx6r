@@ -95,6 +95,14 @@ WINDOW_SEMANTICS = "[start, end)"
 # 影响面最多展开层数，防止异常登记把页面拖死
 MAX_IMPACT_DEPTH = 8
 
+# 修复排程：收款 / 结算事实表属于关键链路，先于公共维度字段处理。
+# 部署时按业务改这里，判定层不写死任何样例表名。
+CRITICAL_TABLES = {"fct_pay"}
+CRITICAL_CONSUMERS = {"dw.task_settle"}
+
+# 维护窗口一次最多完成几项可切换工单；阻塞项不占窗口
+PLAN_WINDOW_CAPACITY = 3
+
 
 def resolve_sample(name: str) -> Path:
     """把样例文件名限定在 sample_data/ 内，拒绝穿越与绝对路径。"""

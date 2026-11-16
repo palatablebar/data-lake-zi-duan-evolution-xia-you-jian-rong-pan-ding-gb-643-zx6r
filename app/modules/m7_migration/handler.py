@@ -64,6 +64,12 @@ def export_ledger():
     return _csv(service.ledger_csv_text(run), "fieldmap-ledger.csv")
 
 
+@router.get("/api/export/plan.csv")
+def export_plan():
+    run = service.latest_or_404()
+    return _csv(service.plan_csv_text(run), "fieldmap-plan.csv")
+
+
 @router.get("/api/export/manifest.json")
 def export_manifest():
     run = service.latest_or_404()

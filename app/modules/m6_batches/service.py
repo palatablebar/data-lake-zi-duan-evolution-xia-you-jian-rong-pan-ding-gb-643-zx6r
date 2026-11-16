@@ -151,6 +151,11 @@ def execute(old_file: str = config.DEFAULT_OLD, new_file: str = config.DEFAULT_N
     }
     run["summary"] = history.summary_of(run)
     store.save_run(run)
+
+    # 工单随批次产生；同一批次键重跑只补缺，不新增行
+    from app.modules.m8_plan import lifecycle as plan_lifecycle, model as plan_model
+
+    plan_lifecycle.ensure_orders(run["batch_key"], plan_model.build(run)["items"])
     return run
 
 

@@ -77,3 +77,17 @@
 - 列定义行 = 接受字段 + 阻断行
 
 每个字段只进一个桶，所以四个等式成立是必要条件；差额不为 0 即判定漏项。
+
+## 9 修复排程与切换
+
+- 工单：每个破坏项一条，`item_id = fid:<field_id>`，按 `(batch_key, item_id)` 唯一。
+- 排序键：`(关键链路档, -影响任务数, 表名, field_id)`；依赖项永远排在它的被依赖项之前。
+  - 关键链路档：表在 `CRITICAL_TABLES` 内，或受影响节点命中 `CRITICAL_CONSUMERS` 记为 0，其余为 1。
+- 依赖只有两类：`NAME_DUP_DIFF_ID`（旧身份需先下线并迁走下游）与 `ALIAS_AFTER_TYPE`（同节点类型先放宽）。依赖成环时整链按阻塞处理，要求人工拆环，不允许自动放行。
+- 可切换 = 三条件同时成立：自身可修、所有依赖已切换、本批窗口未满。缺一即不可切换，接口拒绝并返回 `DEP_UNRELEASED`。
+- 波次：`本批`（占窗口槽）/ `下批`（依赖已解除但没槽，或依赖可解除但还没切）/ `阻塞`（自身或依赖链有解不了的项、依赖成环）/ `中断`（有未完成的切换）。
+- 状态码：`PLAN_READY`（可切换）、`PLAN_WAITING`（等待依赖切换）、`PLAN_BLOCKED`（依赖未解除）、`WINDOW_FULL`（窗口已满）、`SWITCH_INTERRUPTED`（切换中断）、`PLAN_SWITCHED`（已切换）、`PLAN_ROLLED_BACK`（已回滚）。页面、排程 CSV、迁移单、运行清单的 `plan` 段共用这一组码。
+- 窗口容量 = `PLAN_WINDOW_CAPACITY`；阻塞项不占槽，已切换与中断项各占一槽。
+- 切换两阶段：`prepare` 落日志 → `commit` 落状态。两次之间中断，状态停在 `switching`，只能回滚，不能重试。
+- 回滚按日志里的 `previous` 恢复；有已切换的下游依赖时先拒（`DEPENDENT_SWITCHED`），必须逆依赖顺序回滚。
+- 同一批次重试只补缺工单：`INSERT OR IGNORE`，不新增行、不搬位置。

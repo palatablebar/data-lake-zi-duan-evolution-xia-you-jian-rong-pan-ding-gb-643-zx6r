@@ -31,6 +31,18 @@ const ACTIONS = {
     }
     return `比较完成 ${result.change}`;
   },
+
+  async 'plan-switch'(button) {
+    const result = await request('/api/plan/switch', { item_id: button.dataset.itemId });
+    return result.already ? `工单 ${result.item_id} 已切换` : `工单 ${result.item_id} 已切换`;
+  },
+
+  async 'plan-rollback'(button) {
+    const result = await request('/api/plan/rollback', { item_id: button.dataset.itemId });
+    return result.interrupted
+      ? `中断的切换已恢复到 ${result.restored}`
+      : `已回滚到 ${result.restored}`;
+  },
 };
 
 async function request(url, body) {
@@ -72,7 +84,7 @@ document.addEventListener('click', async (event) => {
   try {
     const message = await handler(button);
     flash(target, message || '完成', false);
-    if (name === 'run') {
+    if (name === 'run' || name === 'plan-switch' || name === 'plan-rollback') {
       setTimeout(() => window.location.reload(), 400);
     }
   } catch (error) {
